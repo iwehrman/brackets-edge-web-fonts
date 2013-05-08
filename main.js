@@ -30,7 +30,9 @@ define(function (require, exports, module) {
     
     // Modules
     var webfont                 = require("webfont"),
-        parser                  = require("cssFontParser"),
+        cssParser               = require("cssFontParser"),
+        lessParser              = require("lessFontParser"),
+        sassParser              = require("sassFontParser"),
         ewfBrowseDialogHtml     = require("text!htmlContent/ewf-browse-dialog.html"),
         ewfIncludeDialogHtml    = require("text!htmlContent/ewf-include-dialog.html"),
         ewfHowtoDialogHtml      = require("text!htmlContent/ewf-howto-dialog.html"),
@@ -75,12 +77,34 @@ define(function (require, exports, module) {
     var fontnameStartRegExp = /[\w"']/;
     var scriptCache = {};
     
-    function _documentIsCSS(doc) {
-        return doc && doc.getLanguage().getName() === "CSS";
+    function _supportedLanguage(language) {
+        var name = language.getName();
+            
+        return (name === "CSS" || name === "LESS" || name === "SASS");
+    }
+    
+    function _supportedDocument(doc) {
+        return doc && _supportedLanguage(doc.getLanguage());
     }
 
-    function _contextIsCSS(editor) {
-        return editor && editor.getLanguageForSelection().getName() === "CSS";
+    function _supportedContext(editor) {
+        return editor && _supportedLanguage(editor.getLanguageForSelection());
+    }
+    
+    function _getParserForContext(editor) {
+        var language    = editor.getLanguageForSelection(),
+            name        = language.getName();
+        
+        switch (name) {
+        case "CSS":
+            return cssParser;
+        case "LESS":
+            return lessParser;
+        case "SASS":
+            return sassParser;
+        default:
+            throw new Error("Unsupported language: " + name);
+        }
     }
     
     /** Adds an option to browse EWF to the bottom of the code hint list
@@ -154,11 +178,12 @@ define(function (require, exports, module) {
     }
     
     function _insertFontCompletionAtCursor(completion, editor, cursor) {
-        var token;
+        var parser, token;
         var actualCompletion = completion;
         var stringChar = "\"";
         
-        if (_contextIsCSS(editor)) { // on the off-chance we changed documents, don't change anything
+        if (_supportedContext(editor)) { // on the off-chance we changed documents, don't change anything
+            parser = _getParserForContext(editor);
             token = parser.getFontTokenAtCursor(editor, cursor);
             if (token) {
                 // get the correct string character if there is already one in use
@@ -240,8 +265,11 @@ define(function (require, exports, module) {
      * whether it is appropriate to do so.
      */
     FontHints.prototype.hasHints = function (editor, implicitChar) {
+        var parser;
+        
         this.editor = editor;
-        if (_contextIsCSS(editor)) {
+        if (_supportedContext(editor)) {
+            parser = _getParserForContext(editor);
             if (!implicitChar) {
                 if (parser.getFontTokenAtCursor(editor, editor.getCursorPos())) {
                     return true;
@@ -280,9 +308,11 @@ define(function (require, exports, module) {
             cursor = editor.getCursorPos(),
             query,
             lowerCaseQuery,
+            parser,
             token;
         
-        if (_contextIsCSS(editor)) {
+        if (_supportedContext(editor)) {
+            parser = _getParserForContext(editor);
             token = parser.getFontTokenAtCursor(editor, cursor);
             if (token) {
                 if (token.className === "string") { // is wrapped in quotes        
@@ -403,6 +433,8 @@ define(function (require, exports, module) {
          *  configurator UI that lets users specify which variants and subsets they want
          */
         function _handleGenerateInclude() {
+            var editor = EditorManager.getFocusedEditor() || EditorManager.getCurrentFullEditor();
+            var parser = _getParserForContext(editor);
             var fonts = parser.parseCurrentEditor(false);
             var fontFamilies = [], allFvds = [];
             var i, j, f;
@@ -430,7 +462,7 @@ define(function (require, exports, module) {
         
         // install autocomplete handler
         var fontHints = new FontHints();
-        CodeHintManager.registerHintProvider(fontHints, ["css"], 1);
+        CodeHintManager.registerHintProvider(fontHints, ["css", "less", "sass"], 1);
         
         // load blank font
         ExtensionUtils.loadStyleSheet(module, "styles/adobe-blank.css");
@@ -478,7 +510,7 @@ define(function (require, exports, module) {
         function _handleToolbarClick() {
             var doc = DocumentManager.getCurrentDocument();
 
-            if (!doc || !_documentIsCSS(doc)) {
+            if (!doc || !_supportedDocument(doc)) {
                 _showHowtoDialog();
             } else {
                 CommandManager.execute(COMMAND_GENERATE_INCLUDE);
@@ -488,7 +520,7 @@ define(function (require, exports, module) {
         function _handleDocumentChange() {
             var doc = DocumentManager.getCurrentDocument();
             // doc will be null if there's no active document (user closed all docs)
-            if (doc && _documentIsCSS(doc)) {
+            if (doc && _supportedDocument(doc)) {
                 $toolbarIcon.addClass("active");
             } else {
                 $toolbarIcon.removeClass("active");
