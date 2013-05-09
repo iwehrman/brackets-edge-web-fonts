@@ -216,7 +216,13 @@ define(function (require, exports, module) {
                 // directly to replace the range instead of using the Document, as we should. The
                 // reason is due to a flaw in our current document synchronization architecture when
                 // inline editors are open.
-                if (token.className === "string" || token.className === "variable-2" || token.className === "string-2") { // replace
+                if (token.className === "string" ||
+                        token.className === "variable-2" ||
+                        token.className === "string-2" ||
+                        (token.className === null &&
+                            token.string.trim() !== "" &&
+                            token.string.indexOf(",") === -1 &&
+                            token.string.indexOf(":") === -1)) { // replace
                     editor._codeMirror.replaceRange(actualCompletion,
                                                  {line: cursor.line, ch: token.start},
                                                  {line: cursor.line, ch: endChar});
@@ -324,7 +330,12 @@ define(function (require, exports, module) {
                     } else { // not in the text
                         query = "";
                     }
-                } else if (token.className === "variable-2" || token.className === "string-2") { // is not wrapped in quotes
+                } else if (token.className === "variable-2" ||
+                               token.className === "string-2" ||
+                               (token.className === null &&
+                                    token.string.trim() !== "" &&
+                                    token.string.indexOf(",") === -1 &&
+                                    token.string.indexOf(":" === -1))) { // is not wrapped in quotes
                     query = token.string.substring(0, cursor.ch - token.start);
                 } else { // after a ":", a space, or a ","
                     query = "";
