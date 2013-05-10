@@ -57,7 +57,9 @@ define(function (require, exports, module) {
                 } else if (isParsingFontList) {
                     if (t.string === ";" || t.string === "}") {
                         isParsingFontList = false;
-                    } else if (assumeCursorInvalid && fontListStartLine === userCursor.line && fontListStartLine !== cursor.line) {
+                    } else if (assumeCursorInvalid &&
+                                fontListStartLine === userCursor.line &&
+                                fontListStartLine !== cursor.line) {
                         // If we're trying to autocomplete, assume the line the user's cursor is on might
                         // be incomplete (because s/he might be in the middle of typing). In that case,
                         // we want to assume the font list ends at the first newline (in case they
