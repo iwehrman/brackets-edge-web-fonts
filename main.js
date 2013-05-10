@@ -30,9 +30,10 @@ define(function (require, exports, module) {
     
     // Modules
     var webfont                 = require("webfont"),
-        cssParser               = require("cssFontParser"),
-        lessParser              = require("lessFontParser"),
-        sassParser              = require("sassFontParser"),
+        FontParser              = require("fontParser"),
+        cssModeSupport          = require("cssModeSupport"),
+        lessModeSupport         = require("lessModeSupport"),
+        sassModeSupport         = require("sassModeSupport"),
         ewfBrowseDialogHtml     = require("text!htmlContent/ewf-browse-dialog.html"),
         ewfIncludeDialogHtml    = require("text!htmlContent/ewf-include-dialog.html"),
         ewfHowtoDialogHtml      = require("text!htmlContent/ewf-howto-dialog.html"),
@@ -67,6 +68,11 @@ define(function (require, exports, module) {
     var COMMAND_GENERATE_INCLUDE = "edgewebfonts.generateinclude";
     var PREFERENCES_CLIENT_ID = "com.adobe.edgewebfonts";
     var PREFERENCES_FONT_HISTORY_KEY = "ewf-font-history";
+
+    // Font parsers    
+    var cssParser   = new FontParser(cssModeSupport),
+        lessParser  = new FontParser(lessModeSupport),
+        sassParser  = new FontParser(sassModeSupport);
     
     // Local variables
     var lastFontSelected = null;
@@ -102,6 +108,22 @@ define(function (require, exports, module) {
             return lessParser;
         case "SASS":
             return sassParser;
+        default:
+            throw new Error("Unsupported language: " + name);
+        }
+    }
+    
+    function _getModeSupportForContext(editor) {
+        var language    = editor.getLanguageForSelection(),
+            name        = language.getName();
+        
+        switch (name) {
+        case "CSS":
+            return cssModeSupport;
+        case "LESS":
+            return lessModeSupport;
+        case "SASS":
+            return sassModeSupport;
         default:
             throw new Error("Unsupported language: " + name);
         }
@@ -178,23 +200,24 @@ define(function (require, exports, module) {
     }
     
     function _insertFontCompletionAtCursor(completion, editor, cursor) {
-        var parser, token;
+        var modeSupport, parser, token;
         var actualCompletion = completion;
         var stringChar = "\"";
         
         if (_supportedContext(editor)) { // on the off-chance we changed documents, don't change anything
+            modeSupport = _getModeSupportForContext(editor);
             parser = _getParserForContext(editor);
             token = parser.getFontTokenAtCursor(editor, cursor);
             if (token) {
                 // get the correct string character if there is already one in use
-                if (token.className === "string") {
+                if (modeSupport.isFontNameStringToken(token)) {
                     stringChar = token.string.substring(0, 1);
                 }
 
                 // wrap the completion in string character if either 
                 //  a.) we're inserting into a string, or 
                 //  b.) the slug contains a space
-                if (token.className === "string" || whitespaceRegExp.test(actualCompletion)) {
+                if (modeSupport.isFontNameStringToken(token) || whitespaceRegExp.test(actualCompletion)) {
                     actualCompletion = stringChar + actualCompletion + stringChar;
                 }
 
@@ -203,7 +226,7 @@ define(function (require, exports, module) {
                 // line is a string. So, we want to stop at the first occurrence of a comma or 
                 // semi-colon.
                 var endChar = token.end;
-                if (token.className === "string") {
+                if (modeSupport.isFontNameStringToken(token)) {
                     // Find the *first* comma or semi
                     var match = commaSemiRegExp.exec(token.string);
                     if (match) {
@@ -216,13 +239,8 @@ define(function (require, exports, module) {
                 // directly to replace the range instead of using the Document, as we should. The
                 // reason is due to a flaw in our current document synchronization architecture when
                 // inline editors are open.
-                if (token.className === "string" ||
-                        token.className === "variable-2" ||
-                        token.className === "string-2" ||
-                        (token.className === null &&
-                            token.string.trim() !== "" &&
-                            token.string.indexOf(",") === -1 &&
-                            token.string.indexOf(":") === -1)) { // replace
+                if (modeSupport.isFontNameStringToken(token) ||
+                        modeSupport.isFontNameToken(token)) { // replace
                     editor._codeMirror.replaceRange(actualCompletion,
                                                  {line: cursor.line, ch: token.start},
                                                  {line: cursor.line, ch: endChar});
@@ -314,14 +332,16 @@ define(function (require, exports, module) {
             cursor = editor.getCursorPos(),
             query,
             lowerCaseQuery,
+            modeSupport,
             parser,
             token;
         
         if (_supportedContext(editor)) {
+            modeSupport = _getModeSupportForContext(editor);
             parser = _getParserForContext(editor);
             token = parser.getFontTokenAtCursor(editor, cursor);
             if (token) {
-                if (token.className === "string") { // is wrapped in quotes        
+                if (modeSupport.isFontNameStringToken(token)) { // is wrapped in quotes        
                     if (token.start < cursor.ch) { // actually in the text
                         query = token.string.substring(1, cursor.ch - token.start);
                         if (token.end === cursor.ch) { // at the end, so need to clip off closing quote
@@ -330,12 +350,7 @@ define(function (require, exports, module) {
                     } else { // not in the text
                         query = "";
                     }
-                } else if (token.className === "variable-2" ||
-                               token.className === "string-2" ||
-                               (token.className === null &&
-                                    token.string.trim() !== "" &&
-                                    token.string.indexOf(",") === -1 &&
-                                    token.string.indexOf(":" === -1))) { // is not wrapped in quotes
+                } else if (modeSupport.isFontNameToken(token)) { // is not wrapped in quotes
                     query = token.string.substring(0, cursor.ch - token.start);
                 } else { // after a ":", a space, or a ","
                     query = "";
